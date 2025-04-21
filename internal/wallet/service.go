@@ -29,6 +29,11 @@ type ApproveTransactionInput struct {
 	OwnerAddress  string
 }
 
+type ExecuteTransactionInput struct {
+	TransactionID uint
+	ExecutorAddress string
+}
+
 func (s *WalletService) CreateWallet(input CreateWalletInput) (*MultiSigWallet, error) {
 	if len(input.Owners) < int(input.Threshold) {
 		return nil, errors.New("threshold cannot be greater than number of owners")
@@ -168,3 +173,52 @@ func (s *WalletService) ApproveTransaction(input ApproveTransactionInput) (*Tran
 
 	return &transaction, nil
 }
+
+
+func (s *WalletService) ExecuteTransaction(input ExecuteTransactionInput) (*Transaction, error) {
+	
+	// Fetch the transaction with its approvals
+	var transaction Transaction
+	if err := s.DB.Preload("Approvals").First(&transaction, input.TransactionID).Error; err != nil {
+		return nil, fmt.Errorf("transaction not found: %w", err)
+	}
+
+	// Check if the transaction is ready to execute
+	if transaction.Status != "ready_to_execute" {
+		return nil, fmt.Errorf("transaction is not ready to execute, current status: %s", transaction.Status)
+	}
+
+	// Get wallet with its owners
+	var wallet MultiSigWallet
+	if err := s.DB.Preload("Owners").First(&wallet, transaction.WalletID).Error; err != nil {
+		return nil, fmt.Errorf("wallet not found: %w", err)
+	}
+
+	// Verify that the executor is one of the wallet owners
+	isOwner := false
+	for _, owner := range wallet.Owners {
+		if owner.Address == input.ExecutorAddress {
+			isOwner = true
+			break
+		}
+	}
+
+	if !isOwner {
+		return nil, fmt.Errorf("only wallet owners can execute transactions")
+	}
+
+	// NOTE:- here it would typically perform the actual transfer of funds
+	// This is where it interfaces with the blockchain 
+	// For now, we'll just simulate the execution by updating the status
+
+	// Update transaction status to executed
+	transaction.Status = "executed"
+	if err := s.DB.Save(&transaction).Error; err != nil {
+		return nil, fmt.Errorf("Failed to update the transaction status: %w", err)
+	}
+
+	return &transaction, nil
+}
+
+
+

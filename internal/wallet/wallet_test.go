@@ -193,3 +193,78 @@ func TestApproveTransaction(t *testing.T) {
 	assert.Equal(t, "ready_to_execute", finalTx.Status, "Transaction should be ready to execute with 3 approvals")
 }
 
+func TestExecuteTransaction(t *testing.T) {
+	db, err := setupTestDB()
+	if err != nil {
+		t.Fatalf("Failed to setup test DB: %v", err)
+	}
+
+	// Create wallet service
+	service := &WalletService{DB: db}
+
+	// Create wallet
+	walletInput := CreateWalletInput{
+		Name:      "Test Wallet",
+		Owners:    []string{"0xOwner1", "0xOwner2", "0xOwner3"},
+		Threshold: 2,
+	}
+	wallet, err := service.CreateWallet(walletInput)
+	if err != nil {
+		t.Fatalf("Failed to create wallet: %v", err)
+	}
+
+	// Submit transaction
+	txInput := SubmitTransactionInput{
+		WalletID: wallet.ID,
+		From:     "0xOwner1",
+		To:       "0xRecipient",
+		Amount:   100,
+	}
+	tx, err := service.SubmitTransaction(txInput)
+	if err != nil {
+		t.Fatalf("Failed to submit transaction: %v", err)
+	}
+
+	// Have the second owner approve the transaction
+	approveInput := ApproveTransactionInput{
+		TransactionID: tx.ID,
+		OwnerAddress:  "0xOwner2",
+	}
+	
+	tx, err = service.ApproveTransaction(approveInput)
+	if err != nil {
+		t.Fatalf("Failed to approve transaction: %v", err)
+	}
+
+	// Verify transaction is ready to execute
+	assert.Equal(t, "ready_to_execute", tx.Status, "Transaction should be ready to execute")
+
+	// Test: Non-owner cannot execute transaction
+	nonOwnerExecuteInput := ExecuteTransactionInput{
+		TransactionID:   tx.ID,
+		ExecutorAddress: "0xNonOwner",
+	}
+	_, err = service.ExecuteTransaction(nonOwnerExecuteInput)
+	assert.Error(t, err, "Non-owner should not be able to execute transaction")
+	assert.Contains(t, err.Error(), "only wallet owners", "Error should mention that only owners can execute")
+
+	// Test: Owner can execute transaction
+	executeInput := ExecuteTransactionInput{
+		TransactionID:   tx.ID,
+		ExecutorAddress: "0xOwner1",
+	}
+	
+	executedTx, err := service.ExecuteTransaction(executeInput)
+	if err != nil {
+		t.Fatalf("Failed to execute transaction: %v", err)
+	}
+
+	// Verify transaction is now executed
+	assert.Equal(t, "executed", executedTx.Status, "Transaction should be executed")
+
+	// Test: Cannot execute a transaction that's already executed
+	_, err = service.ExecuteTransaction(executeInput)
+	assert.Error(t, err, "Should not be able to execute an already executed transaction")
+	assert.Contains(t, err.Error(), "not ready to execute", "Error should mention transaction is not ready")
+}
+
