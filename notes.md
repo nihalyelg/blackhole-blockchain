@@ -1,5 +1,3 @@
-## First thing to do tomorrrow
+To Run the multi-sig wallet tests:-
+go test -v ./internal/wallet
 
-go test -v ./internal/wallet (RUN THIS)
-
-then continue with the approve transaction minitask from chatgpt, and take help of claude when stuck.
